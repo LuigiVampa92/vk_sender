@@ -541,7 +541,7 @@ def start():
         progress_bar(i, iterations, dots_in_pb)
         round_switches = get_switches_list_from_str(list_of_dts[i],list_of_switch_sym)
         if list_of_recievers[i] not in list_of_exclusions:
-            send_msg_dummy(transformed_msg(msg,round_switches), list_of_recievers[i], file_with_exclusions)
+            send_msg(transformed_msg(msg,round_switches), list_of_recievers[i], file_with_exclusions)
             list_of_exclusions.append(list_of_recievers[i])
             sleep(iv - ivrd)
             sleep(random.randint(0, ivrd * 2))
