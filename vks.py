@@ -37,6 +37,12 @@ def emoji_wipe(plain):
     return bytearray.decode(array, 'utf-8', errors='ignore')
 
 
+def bom_wipe(plain):
+    array = bytearray(plain)
+    array = array.replace(array[0:], array[2:])
+    return bytearray.decode(array, 'utf-8', errors='ignore')
+
+
 def encoded_dict(in_dict):
     out_dict = {}
     for k, v in in_dict.iteritems():
@@ -97,6 +103,8 @@ def check_user():
             check = check['response']
             check = check[0]
             name = '%s %s' % (check['first_name'], check['last_name'])
+            if os.name != 'nt':
+                name = name.encode('utf-8', errors='ignore')
         except Exception:
             pass
         print('Authorized as %s' % name)
@@ -156,7 +164,7 @@ def deauth():
         print('error: unknown')
 
 
-def load_str_value(fws):
+def load_str_value(fws, read_init_msg = False):
     try:
         f = open(fws, 'rb')
         txt = f.read()
@@ -166,7 +174,23 @@ def load_str_value(fws):
     except Exception:
         print('error while reading data')
         return False
-    return txt.decode('utf-8', errors='ignore')
+    if read_init_msg:
+        print '\n'
+        try:
+            if os.name ==  'nt':
+                ret = txt.decode('utf-8', errors='ignore')
+            else:
+                ret = txt
+            print 'MESSAGE PREVIEW:\n%s\n' % ret
+            return ret
+        except Exception:
+            ret = bom_wipe(txt)
+            if os.name !=  'nt':
+                ret = ret.encode('utf-8', errors='ignore')
+            print 'MESSAGE PREVIEW:\n%s\n' % ret
+            return ret
+    else:
+        return txt.decode('utf-8', errors='ignore')
 
 
 def load_int_value(fwiv):
@@ -225,7 +249,7 @@ def dump_value(value, file_name):
 def log(line):
     try:
         f = open(file_with_log, 'a')
-        f.write('%s\n' % str(line))
+        f.write(line.replace('\r\n','\n').encode('utf-8',errors='ignore'))
         f.close()
     except Exception:
         pass
@@ -266,7 +290,10 @@ def progress_bar(value, total, dots):
     diff = dots - dot_q
     if diff < 0:
         diff = 0
-    sys.stdout.write('*' * dot_q + '.' * diff + '   [ %.1f %s ]          \r' % (cur, '%'))
+    if os.name == 'nt':
+        sys.stdout.write('*' * dot_q + '.' * diff + '   [ %.1f %s ]          \r' % (cur, '%'))
+    else:
+        print '  [ %.1f %s finished]' % (cur, '%')
 
 
 def get_group_name(gid):
@@ -277,6 +304,8 @@ def get_group_name(gid):
         res = res['response']
         res = res[0]
         res = res['name']
+        if os.name != 'nt':
+            res = res.encode('utf-8', errors='ignore')
     except Exception:
         return '???'
     return res
@@ -424,7 +453,7 @@ def send_msg(mts, uid, exc):
             pass
     except Exception:
         print 'error: problems with connection'
-        log('error. message didnt send to user %s\n' % str(uid))
+        log('error. message didnt send to user %s' % str(uid))
         return
     params = {}
     params['access_token'] = token
@@ -474,26 +503,29 @@ def new_task():
         print 'invalid input data'
         rm_options_values()
         return
+
     try:
         file_with_msg = raw_input('file with message: ')
         if file_with_msg == '':
             raise Exception
-        msg = load_str_value(file_with_msg)
+        msg = load_str_value(os.path.join(os.path.dirname(os.path.realpath(__file__)), file_with_msg), True)
     except Exception:
         print 'error: cannot read message'
         rm_options_values()
         return
+
     dump_value(iv, file_with_interval_value)
     dump_value(ivrd, file_with_random_diff)
+    print '\noption values set'
 
     f = open(file_with_mts, 'w')
-    f.write(msg.replace('\r\n','\n').encode('utf-8',errors='ignore'))
+    if os.name == 'nt':
+        f.write(msg.replace('\r\n','\n').encode('utf-8',errors='ignore'))
+    else:
+        f.write(msg.replace('\r\n','\n'))
     f.close()
 
     msg = load_str_value(file_with_mts)
-
-    print '\noption values set'
-    print '\nMESSAGE TEXT:\n%s\n' % msg
 
     get_switch_map(msg, file_with_msg_sym_map)
 
@@ -580,7 +612,7 @@ def execute_command(command):
         try:
             new_task()
         except Exception:
-            print 'cannot assign new task. error occured'
+            print 'error: cannot assign new task'
             return
     if argvs[0] == 'start':
         if not os.path.exists(file_with_token) or not os.path.exists(file_with_userlist) or not os.path.exists(file_with_interval_value) \
@@ -595,6 +627,17 @@ def execute_command(command):
             return
 
 
+def check_dir(wd):
+    if not os.path.exists(wd):
+        os.chdir(os.path.dirname(os.path.realpath(__file__)))
+        os.mkdir(wd)
+    if os.name == 'nt':
+        try:
+            os.system('attrib +h %s' % wd)
+        except Exception:
+            pass
+
+
 def listen():
     while True:
         print '\nenter command:'
@@ -602,19 +645,20 @@ def listen():
             command = raw_input('> ')
             execute_command(command)
         except Exception:
-            print 'error'
+            print 'error: cannot execute command'
+            return
 
 
-file_with_token = 'at.dfs'
-file_with_exclusions = 'exc.dfs'
-file_with_log = 'log.txt'
-file_with_userlist = 'lst.dfs'
-file_with_interval_value = 'iv.dfs'
-file_with_random_diff = 'ivrd.dfs'
-file_with_msg_sym_map = 'msm.dfs'
-file_with_mts = 'mts.dfs'
-file_with_dts = 'dts.dfs'
-
+work_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), '.vks')
+file_with_token = os.path.join(work_dir, 'at.dfs')
+file_with_exclusions = os.path.join(work_dir, 'exc.dfs')
+file_with_log = os.path.join(work_dir, 'log.txt')
+file_with_userlist = os.path.join(work_dir, 'lst.dfs')
+file_with_interval_value = os.path.join(work_dir, 'iv.dfs')
+file_with_random_diff = os.path.join(work_dir, 'ivrd.dfs')
+file_with_msg_sym_map = os.path.join(work_dir, 'msm.dfs')
+file_with_mts = os.path.join(work_dir, 'mts.dfs')
+file_with_dts = os.path.join(work_dir, 'dts.dfs')
 basic_request_interval = 0
 dots_in_pb = 50
 api_url = 'https://api.vk.com/method/'
@@ -629,6 +673,7 @@ allowed_commands = ['auth', 'deauth', 'user', 'exit', 'help', 'task', 'start']
 
 
 def main():
+    check_dir(work_dir)
     man()
     listen()
 
