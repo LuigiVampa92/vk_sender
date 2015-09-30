@@ -1,3 +1,5 @@
 .idea
+.vks
 *.txt
 *.dfs
+*.pyc

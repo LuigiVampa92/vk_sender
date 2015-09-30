@@ -261,7 +261,7 @@ def drop():
 
 def man():
     print(' *** VKS - vk spam sender ***\n'
-          '        by LuigiVampa92\n          enjoy =)\n\n'
+          '        by LuigiVampa92\n          enjoy =)\n'
           ' Commands:\n'
           'help - show this tutorial\n'
           'exit - close program\n'
@@ -269,7 +269,8 @@ def man():
           'deauth - close current user session\n'
           'user - check current session\n'
           'task - assign task\n'
-          'start - start spaming\n\n'
+          'start - start spaming\n'
+          'delete - delete messages that was already delivered\n\n'
           ' Usage:\n'
           '- log in vk by command \"auth\"\n'
           '- assign new task by \"task\"\n'
@@ -429,7 +430,7 @@ def get_dts(fwdts, fwul, fwmsm):
         return False
 
 
-def send_msg(mts, uid, exc):
+def send_msg(mts, uid, exc, fwtd):
     token = load_str_value(file_with_token)
     if not token:
         print 'error: no user authorized'
@@ -455,16 +456,24 @@ def send_msg(mts, uid, exc):
         print 'error: problems with connection'
         log('error. message didnt send to user %s' % str(uid))
         return
-    params = {}
-    params['access_token'] = token
-    params['message_ids'] = mid
-    try:
-        request('messages.delete', params)
-    except Exception:
-        pass
+    if delete_msgs_auto:
+        params = {}
+        params['access_token'] = token
+        params['message_ids'] = mid
+        try:
+            request('messages.delete', params)
+        except Exception:
+            pass
+    else:
+        try:
+            f = open(fwtd, 'a')
+            f.write('%s\n' % str(mid))
+            f.close()
+        except Exception:
+            pass
 
 
-def send_msg_dummy(mts, uid, exc):
+def send_msg_dummy(mts, uid, exc, fwtd):
     token = load_str_value(file_with_token)
     if not token:
         print 'error: no user authorized'
@@ -484,6 +493,7 @@ def rm_options_values():
     rm_file(file_with_mts)
     rm_file(file_with_exclusions)
     rm_file(file_with_dts)
+    rm_file(file_with_td)
 
 
 def new_task():
@@ -542,7 +552,32 @@ def new_task():
         rm_options_values()
         return
     create_file(file_with_exclusions)
+    create_file(file_with_td)
     print '\n task assigned succesfully'
+
+
+def delete_sent_msgs(fwtd, qnt):
+    print 'deleting delivered messages...'
+    list_of_td = load_int_list_data(fwtd)
+    token = load_str_value(file_with_token)
+    while len(list_of_td) > qnt:
+        params = {}
+        params['access_token'] = token
+        params['message_ids'] = ','.join(str(mid) for mid in list_of_td[:qnt])
+        try:
+            request('messages.delete', params)
+        except Exception:
+            pass
+        list_of_td = list_of_td[qnt:]
+    params = {}
+    params['access_token'] = token
+    params['message_ids'] = ','.join(str(mid) for mid in list_of_td)
+    try:
+        request('messages.delete', params)
+    except Exception:
+        pass
+    rm_file(fwtd)
+    print '... OK'
 
 
 def start():
@@ -555,7 +590,7 @@ def start():
         print '\n'
         msg = load_str_value(file_with_mts)
         list_of_switch_sym = json.loads(load_str_value(file_with_msg_sym_map))
-        list_of_recievers =load_int_list_data(file_with_userlist)
+        list_of_recievers = load_int_list_data(file_with_userlist)
         if list_of_recievers == []:
             raise Exception
         list_of_exclusions = load_int_list_data(file_with_exclusions)
@@ -573,7 +608,7 @@ def start():
         progress_bar(i, iterations, dots_in_pb)
         round_switches = get_switches_list_from_str(list_of_dts[i],list_of_switch_sym)
         if list_of_recievers[i] not in list_of_exclusions:
-            send_msg(transformed_msg(msg,round_switches), list_of_recievers[i], file_with_exclusions)
+            send_msg(transformed_msg(msg,round_switches), list_of_recievers[i], file_with_exclusions, file_with_td)
             list_of_exclusions.append(list_of_recievers[i])
             sleep(iv - ivrd)
             sleep(random.randint(0, ivrd * 2))
@@ -613,6 +648,15 @@ def execute_command(command):
             new_task()
         except Exception:
             print 'error: cannot assign new task'
+            return
+    if argvs[0] == 'delete':
+        if delete_msgs_auto:
+            print 'auto-deleting messages is set in config. no need to delete messages manually'
+            return
+        if os.path.exists(file_with_td) and os.path.exists(file_with_token):
+            delete_sent_msgs(file_with_td, del_qnt)
+        else:
+            print 'no messages to delete'
             return
     if argvs[0] == 'start':
         if not os.path.exists(file_with_token) or not os.path.exists(file_with_userlist) or not os.path.exists(file_with_interval_value) \
@@ -659,17 +703,20 @@ file_with_random_diff = os.path.join(work_dir, 'ivrd.dfs')
 file_with_msg_sym_map = os.path.join(work_dir, 'msm.dfs')
 file_with_mts = os.path.join(work_dir, 'mts.dfs')
 file_with_dts = os.path.join(work_dir, 'dts.dfs')
+file_with_td = os.path.join(work_dir, 'td.dfs')
 basic_request_interval = 0
 dots_in_pb = 50
 api_url = 'https://api.vk.com/method/'
 switch_syms = {
     u'А': u'A', u'В': u'B', u'Е': u'E', u'З': u'3', u'К': u'K', u'М': u'M', u'Н': u'H', u'О': u'O', u'Р': u'P', u'С': u'C', u'Т': u'T', u'Х': u'X', #R-E
-    u'а': u'a', u'е': u'e', u'и': u'u', u'о': u'o', u'р': u'p', u'с': u'c', u'у': u'y', u'х': u'x', #R-E
+    u'а': u'a', u'е': u'e', u'о': u'o', u'р': u'p', u'с': u'c', u'у': u'y', u'х': u'x', #R-E     # u'и': u'u'
 
     u'A': u'А', u'B': u'В', u'E': u'Е', u'3': u'З', u'K': u'К', u'M': u'М', u'H': u'Н', u'O': u'О', u'P': u'Р', u'C': u'С', u'T': u'Т', u'X': u'Х', #E-R
-    u'a': u'а', u'e': u'е', u'u': u'и', u'o': u'о', u'p': u'р', u'c': u'с', u'y': u'у', u'x': u'х' #E-R
+    u'a': u'а', u'e': u'е', u'o': u'о', u'p': u'р', u'c': u'с', u'y': u'у', u'x': u'х' #E-R     # u'u': u'и'
 }
-allowed_commands = ['auth', 'deauth', 'user', 'exit', 'help', 'task', 'start']
+allowed_commands = ['auth', 'deauth', 'user', 'exit', 'help', 'task', 'delete', 'start']
+delete_msgs_auto = False
+del_qnt = 50
 
 
 def main():
